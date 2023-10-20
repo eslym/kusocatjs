@@ -5,6 +5,13 @@
   "scripts": {
     "build": "bun run build.ts"
   },
+  "files": [
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "dist/**/*.ts",
+    "dist/**/*.svelte",
+    "types.d.ts"
+  ],
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -17,10 +24,6 @@
       "svelte": "./dist/ssr.js"
     }
   },
-  "files": [
-    "dist",
-    "src"
-  ],
   "devDependencies": {
     "@tsconfig/svelte": "^5.0.0",
     "@types/glob": "^8.1.0",
