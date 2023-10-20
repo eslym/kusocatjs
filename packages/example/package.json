@@ -1,0 +1,21 @@
+{
+  "name": "@kusocat/example",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "^1.0.4",
+    "vite": "^4.4.11"
+  },
+  "dependencies": {
+    "@kusocat/core": "workspace:*",
+    "@kusocat/inertia": "workspace:*",
+    "frontend": "workspace:*",
+    "reflect-metadata": "^0.1.13"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "workspaces": [
+    "frontend"
+  ]
+}

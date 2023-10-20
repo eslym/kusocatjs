@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "devDependencies": {
+    "bun-types": "^1.0.4",
+    "husky": "^8.0.0",
+    "prettier": "^3.0.3",
+    "prettier-plugin-svelte": "^3.0.3",
+    "typescript": "^5.2.2"
+  },
+  "workspaces": [
+    "packages/*",
+    "packages/example/frontend"
+  ]
+}
