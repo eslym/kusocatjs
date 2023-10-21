@@ -3,7 +3,7 @@
 FROM mcr.microsoft.com/devcontainers/javascript-node:18-bullseye
 
 ARG BUN_INSTALL=/usr/local
-RUN && apt update && apt upgrade -y \
+RUN apt update && apt upgrade -y \
     && apt clean \
     && curl -fsSL https://bun.sh/install > /root/install-bun.sh \
     && chmod +x /root/install-bun.sh \
@@ -13,4 +13,4 @@ RUN && apt update && apt upgrade -y \
     && corepack prepare pnpm@latest --activate \
     && npm install -g npm@latest
 
-CMD ["/bin/sh" "-c" "sleep infinity"]
+CMD echo container started && sleep infinity
