@@ -40,17 +40,6 @@ export type ContextEvents<
 
 const defaultInstances = new Map<symbol, any>();
 
-function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
-    if (value instanceof Promise) return true;
-    if (typeof value !== 'object' || value === null) return false;
-    return (
-        'then' in value &&
-        'catch' in value &&
-        typeof value.then === 'function' &&
-        typeof value.catch === 'function'
-    );
-}
-
 export abstract class Context extends (EventEmitter as new () => {}) implements ContextInterface {
     #instances = new Map<any, any>();
     #resolvers = new Map<symbol, (container: ContextInterface) => any>();
@@ -90,7 +79,7 @@ export abstract class Context extends (EventEmitter as new () => {}) implements 
         const original = this.#resolvers.get(key)!;
         this.#resolvers.set(key, context => {
             const old = original(context);
-            if (isPromise(old)) {
+            if (old instanceof Promise) {
                 return old.then(old => resolver(context, old));
             }
             return resolver(context, old);
@@ -164,7 +153,7 @@ export abstract class Context extends (EventEmitter as new () => {}) implements 
     #set(key: any, instance: any): any {
         const listeners = (this as any).listeners(key);
         const inter: ContextInterface = this.#createInterface(new Set([key]));
-        if (isPromise(instance)) {
+        if (instance instanceof Promise) {
             instance = instance.then(inst => {
                 for (const listener of listeners) {
                     listener(inst, inter);
@@ -206,7 +195,7 @@ export abstract class Context extends (EventEmitter as new () => {}) implements 
             throw new ResolutionError(
                 `Error while resolving ${Array.from(references)
                     .map(referenceToString)
-                    .join(' -> ')} -> ${key.toString()}: no resolver found`,
+                    .join(' -> ')} -> ${referenceToString(key)}: no resolver found`,
             );
         }
         const inter: ContextInterface = this.#createInterface(new Set([...references, key]));
@@ -408,7 +397,7 @@ export const key = {
         cookies: createContextKey<Promise<CookiesInterface>>('request.cookies'),
         session: createContextKey<Promise<SessionInterface>>('request.session'),
         route: createContextKey<RouteInfo>('request.route'),
-        errorHandler: createContextKey<ErrorHandlerInterface>('error-handler'),
+        errorHandler: createContextKey<ErrorHandlerInterface>('request.error-handler'),
     }),
 };
 
