@@ -212,10 +212,15 @@ export class App extends Context {
 
         try {
             for (const setup of this.listeners('request')) {
-                await setup(ctx, this);
+                const val = setup(ctx, this);
+                if (val instanceof Promise) {
+                    await val;
+                }
             }
 
-            const route = await router.resolve(ctx);
+            const r = router.resolve(ctx);
+
+            const route = r instanceof Promise ? await r : r;
 
             if (route) {
                 ctx.set(key.request.route, {
@@ -245,21 +250,25 @@ export class App extends Context {
                     throw new HTTPError(405);
                 });
 
+            let index = 0;
+
             const next = async () => {
-                let res: ResponseType;
+                let res: Promise<ResponseType> | ResponseType;
                 try {
-                    if (middleware.length) {
-                        const nextMiddleware = middleware.shift()!;
-                        res = await nextMiddleware(ctx, next);
+                    if (index < middleware.length) {
+                        const nextMiddleware = middleware[index++];
+                        res = nextMiddleware(ctx, next);
                     } else {
-                        res = await handler(ctx);
+                        res = handler(ctx);
                     }
+                    res = res instanceof Promise ? await res : res;
                     if (res === 'upgraded') {
                         return res;
                     }
                 } catch (err: any) {
                     const errorHandler = ctx.get(key.request.errorHandler);
-                    res = await errorHandler.render(err);
+                    const r = errorHandler.render(err);
+                    res = r instanceof Promise ? await r : r;
                 }
                 return res instanceof Blob ? new Response(res) : res;
             };
@@ -276,7 +285,10 @@ export class App extends Context {
             const finisher = ctx.listeners('finishing');
 
             for (const finish of finisher) {
-                await finish(ctx, res as Response, setres);
+                const val = finish(ctx, res as Response, setres);
+                if (val instanceof Promise) {
+                    await val;
+                }
             }
 
             setImmediate(() => ctx.emit('finished', ctx, res as Response));

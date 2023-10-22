@@ -1,5 +1,5 @@
 export interface ErrorHandlerInterface {
-    render(error: Error): Promise<Response>;
+    render(error: Error): Promise<Response> | Response;
 }
 
 const defaultMessages = new Map<number, string>([
@@ -115,7 +115,7 @@ export class UnauthorizedError extends HTTPError {
 }
 
 export const defaultErrorHandler = {
-    async render(error: Error) {
+    render(error: Error) {
         if (error instanceof HTTPError) {
             const headers = error.headers;
             headers.set('Content-Type', 'text/plain');

@@ -18,7 +18,7 @@ export const nodeHttp = Object.assign(
         if (process.env.NODE_ENV === 'production') {
             console.warn('node-http middleware is not recommended for production use');
         }
-        return (async (ctx: RequestContext, next) => {
+        return ((ctx: RequestContext, next) => {
             if (ctx.has(httpRequest)) {
                 throw new Error('node-http middleware can only be used once per request');
             }

@@ -151,7 +151,7 @@ export interface ResolvedRoute extends RouteInfo {
 }
 
 export interface RouterInterface {
-    resolve(ctx: RequestContext): Promise<ResolvedRoute | undefined>;
+    resolve(ctx: RequestContext): Promise<ResolvedRoute | undefined> | ResolvedRoute | undefined;
 }
 
 export interface RouteRegistrarInterface {
@@ -267,7 +267,7 @@ export class Router implements RouterInterface, RouteRegistrarInterface {
     #namedRoutes: Map<string, RouteInterface> = new Map();
     #matchers: Map<Method, Matcher> = new Map();
 
-    async resolve(ctx: RequestContext): Promise<ResolvedRoute | undefined> {
+    resolve(ctx: RequestContext): ResolvedRoute | undefined {
         const req = ctx.get(key.request);
         const method = req.method === 'HEAD' ? 'GET' : (req.method as Method);
         const matcher = this.#matchers.get(method);

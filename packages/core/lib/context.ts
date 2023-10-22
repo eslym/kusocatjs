@@ -260,20 +260,28 @@ export abstract class Context extends (EventEmitter as new () => {}) implements 
                 if (want[1].length === 0) {
                     switch (want[0]) {
                         case 'context':
-                            defineProp(
-                                child.prototype,
-                                prop,
-                                await Promise.resolve(
-                                    this.#resolve(want[2], new Set([...references, type])),
-                                ),
-                            );
+                            {
+                                const val = this.#resolve(want[2], new Set([...references, type]));
+                                defineProp(
+                                    child.prototype,
+                                    prop,
+                                    val instanceof Promise ? await val : val,
+                                );
+                            }
                             break;
                         case 'singleton':
-                            defineProp(
-                                child.prototype,
-                                prop,
-                                await this.#singleton(want[2], [], new Set([...references, type])),
-                            );
+                            {
+                                const val = this.#singleton(
+                                    want[2],
+                                    [],
+                                    new Set([...references, type]),
+                                );
+                                defineProp(
+                                    child.prototype,
+                                    prop,
+                                    val instanceof Promise ? await val : val,
+                                );
+                            }
                             break;
                     }
                     continue;
@@ -293,7 +301,14 @@ export abstract class Context extends (EventEmitter as new () => {}) implements 
                         );
                         break;
                     case 'singleton':
-                        defineProp(child.prototype, prop, await parent.singleton(want[2]));
+                        {
+                            const val = await parent.singleton(want[2]);
+                            defineProp(
+                                child.prototype,
+                                prop,
+                                val instanceof Promise ? await val : val,
+                            );
+                        }
                         break;
                 }
             }
@@ -306,11 +321,18 @@ export abstract class Context extends (EventEmitter as new () => {}) implements 
             if (want[1].length === 0) {
                 switch (want[0]) {
                     case 'construct':
-                        defineProp(
-                            child.prototype,
-                            prop,
-                            await this.#singleton(want[2], [], new Set([...references, type])),
-                        );
+                        {
+                            const val = this.#singleton(
+                                want[2],
+                                [],
+                                new Set([...references, type]),
+                            );
+                            defineProp(
+                                child.prototype,
+                                prop,
+                                val instanceof Promise ? await val : val,
+                            );
+                        }
                         break;
                 }
                 continue;
@@ -323,7 +345,10 @@ export abstract class Context extends (EventEmitter as new () => {}) implements 
             }
             switch (want[0]) {
                 case 'construct':
-                    defineProp(child.prototype, prop, await parent.singleton(want[2], ...args));
+                    {
+                        const val = parent.singleton(want[2], ...args);
+                        defineProp(child.prototype, prop, val instanceof Promise ? await val : val);
+                    }
                     break;
             }
         }
