@@ -687,10 +687,10 @@ export function use<A, B extends keyof A>(middleware: MiddlewareFunction | Middl
 
 export function param<A, B extends keyof A>(name: string) {
     return (target: A, propertyKey: A[B] extends ActionMethod ? B : never, index: number) => {
-        if (!Reflect.hasMetadata(kParam, target as any)) {
+        if (!Reflect.hasMetadata(kParam, target as any, propertyKey as any)) {
             Reflect.defineMetadata(kParam, new Map(), target as any, propertyKey as any);
         }
-        const params = Reflect.getMetadata(kParam, target as any) as Params;
+        const params = Reflect.getMetadata(kParam, target as any, propertyKey as any) as Params;
         params.set(index, name);
     };
 }
@@ -731,7 +731,7 @@ function actionToHandler(action: Action): HandlerFunction {
         const route = ctx.get(key.request.route);
         if (params) {
             for (const [index, name] of params.entries()) {
-                args[index] = route.params.get(name);
+                args[index - 1] = route.params.get(name);
             }
         }
         return instance[method](ctx, ...args);
