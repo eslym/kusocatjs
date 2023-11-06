@@ -72,7 +72,7 @@ export class Inertia implements InertiaInterface {
     ) {
         const request = this.#request;
         const headers = new Headers(options?.headers);
-        headers.set('cache-control', 'no-cache, private');
+        headers.set('cache-control', 'private, no-store');
         options = {
             status: 200,
             ...options,
