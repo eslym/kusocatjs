@@ -212,7 +212,7 @@ export abstract class InertiaErrorHandler implements ErrorHandlerInterface {
         if (typeof com === 'string') {
             component = com;
             props =
-                process.env.NODE_ENV === 'production'
+                Bun.env.NODE_ENV === 'production'
                     ? {
                           _stack: error.stack,
                       }
@@ -230,11 +230,11 @@ export abstract class InertiaErrorHandler implements ErrorHandlerInterface {
             });
         }
         props.message =
-            props.message ?? process.env.NODE_ENV === 'production'
+            props.message ?? Bun.env.NODE_ENV === 'production'
                 ? 'Internal Server Error'
                 : error.message;
         props.status = props.status ?? 500;
-        if (process.env.NODE_ENV !== 'production') {
+        if (Bun.env.NODE_ENV !== 'production') {
             props.stack = error.stack;
         }
         return this.#inertia.render(component, props, {

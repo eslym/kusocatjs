@@ -15,7 +15,7 @@ const httpResponse = createContextKey<ServerResponse>('node-http.response');
 
 export const nodeHttp = Object.assign(
     (handler: HttpHandler) => {
-        if (process.env.NODE_ENV === 'production') {
+        if (Bun.env.NODE_ENV === 'production') {
             console.warn('node-http middleware is not recommended for production use');
         }
         return ((ctx: RequestContext, next) => {

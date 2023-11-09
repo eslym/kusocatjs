@@ -58,6 +58,8 @@ for (const [pkg, { path, original, json }] of packageData) {
     console.log(`Publishing ${pkg}...`);
     await promisify(exec)(`npm publish --access public`, {
         cwd: path.replace(/\/package\.json$/, ''),
+    }).catch(err => {
+        console.error(err.message);
     });
     await Bun.write(path, original);
 }

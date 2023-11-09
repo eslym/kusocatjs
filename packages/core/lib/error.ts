@@ -124,7 +124,7 @@ export const defaultErrorHandler = {
                 headers,
             });
         }
-        const content = process.env.NODE_ENV === 'production' ? error.message : error.stack;
+        const content = Bun.env.NODE_ENV === 'production' ? error.message : error.stack;
         return new Response(content, {
             status: 500,
             headers: {
