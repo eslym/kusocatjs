@@ -31,6 +31,8 @@ export interface InertiaInterface {
     location(url: string | URL): Promise<Response>;
 }
 
+const env = process.env;
+
 function conflict(request: Request, version: string | null = null) {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
         return false;
@@ -212,7 +214,7 @@ export abstract class InertiaErrorHandler implements ErrorHandlerInterface {
         if (typeof com === 'string') {
             component = com;
             props =
-                Bun.env.NODE_ENV === 'production'
+                env.NODE_ENV === 'production'
                     ? {
                           _stack: error.stack,
                       }
@@ -230,11 +232,11 @@ export abstract class InertiaErrorHandler implements ErrorHandlerInterface {
             });
         }
         props.message =
-            props.message ?? Bun.env.NODE_ENV === 'production'
+            props.message ?? env.NODE_ENV === 'production'
                 ? 'Internal Server Error'
                 : error.message;
         props.status = props.status ?? 500;
-        if (Bun.env.NODE_ENV !== 'production') {
+        if (env.NODE_ENV !== 'production') {
             props.stack = error.stack;
         }
         return this.#inertia.render(component, props, {

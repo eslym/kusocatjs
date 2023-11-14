@@ -13,9 +13,11 @@ type HttpHandler = (
 const httpRequest = createContextKey<IncomingMessage>('node-http.request');
 const httpResponse = createContextKey<ServerResponse>('node-http.response');
 
+const env = process.env;
+
 export const nodeHttp = Object.assign(
     (handler: HttpHandler) => {
-        if (Bun.env.NODE_ENV === 'production') {
+        if (env.NODE_ENV === 'production') {
             console.warn('node-http middleware is not recommended for production use');
         }
         return ((ctx: RequestContext, next) => {

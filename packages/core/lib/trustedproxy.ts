@@ -3,6 +3,7 @@ import type { App } from './app';
 import IPCIDR from 'ip-cidr';
 import { key, createContextKey } from './context';
 import type { SocketAddress } from 'bun';
+import { cloneRequest } from './utils';
 
 const validForwardedProto = new Set(['http', 'https', 'ws', 'wss']);
 
@@ -80,7 +81,7 @@ export const trustedProxy = Object.assign(
             if (host) {
                 url.host = host;
             }
-            const req = new Request(url.toString(), request.clone());
+            const req = cloneRequest(request, url);
             request.headers.set('x-forwarded-for', chain.join(', '));
             ctx.set(key.request, req);
             ctx.set(key.request.address, address);

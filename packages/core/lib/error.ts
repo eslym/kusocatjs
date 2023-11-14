@@ -2,6 +2,8 @@ export interface ErrorHandlerInterface {
     render(error: Error): Promise<Response> | Response;
 }
 
+const env = process.env;
+
 const defaultMessages = new Map<number, string>([
     [100, 'Continue'],
     [101, 'Switching Protocols'],
@@ -124,7 +126,7 @@ export const defaultErrorHandler = {
                 headers,
             });
         }
-        const content = Bun.env.NODE_ENV === 'production' ? error.message : error.stack;
+        const content = env.NODE_ENV === 'production' ? error.message : error.stack;
         return new Response(content, {
             status: 500,
             headers: {
