@@ -1,6 +1,9 @@
-import { key, type ContextInterface } from './context';
+import { exists, mkdir, readdir, rm, stat } from 'fs/promises';
+import { key, type ContextInterface, createContextKey } from './context';
 import type { CookiesInterface } from './cookies';
 import type { EncryptionInterface } from './encryption';
+import { dirname } from 'path';
+import { randomUUID } from 'crypto';
 
 export interface SessionInterface {
     has(key: string): boolean;
@@ -8,29 +11,20 @@ export interface SessionInterface {
     set<T extends any>(key: string, value: T): SessionInterface;
     flash(key: string, value: any): SessionInterface;
     keep(...keys: string[]): SessionInterface;
-    reflash(...keys: string[]): SessionInterface;
+    reflash(): SessionInterface;
     delete(key: string): SessionInterface;
     clear(): SessionInterface;
-    commit(): Promise<void>;
+    commit(): Promise<SessionInterface>;
 }
 
-export class BasicCookieSession implements SessionInterface {
-    #cookies: CookiesInterface;
-    #crypto: EncryptionInterface;
+abstract class AbstractSession {
     #data: Map<string, any>;
     #flash: Set<string>;
-    #reflash: Set<string> = new Set();
+    #keep: Set<string> = new Set();
 
-    constructor(
-        data: Map<string, any>,
-        flash: Set<string>,
-        cookies: CookiesInterface,
-        crypto: EncryptionInterface,
-    ) {
+    constructor(data: Map<string, any>, flash: Set<string>) {
         this.#data = data;
         this.#flash = flash;
-        this.#cookies = cookies;
-        this.#crypto = crypto;
     }
 
     has(key: string) {
@@ -53,12 +47,12 @@ export class BasicCookieSession implements SessionInterface {
     }
 
     keep(...keys: string[]): this {
-        keys.forEach(key => this.#reflash.add(key));
+        keys.forEach(key => this.#keep.add(key));
         return this;
     }
 
     reflash(): this {
-        this.#flash.forEach(key => this.#reflash.add(key));
+        this.#flash.forEach(key => this.#keep.add(key));
         return this;
     }
 
@@ -72,27 +66,151 @@ export class BasicCookieSession implements SessionInterface {
         return this;
     }
 
-    async commit(): Promise<void> {
+    abstract commit(): Promise<this>;
+
+    protected static __getData(session: AbstractSession) {
+        return session.#data;
+    }
+
+    protected static __getFlash(session: AbstractSession) {
+        return session.#flash;
+    }
+
+    protected static __getKeep(session: AbstractSession) {
+        return session.#keep;
+    }
+}
+
+export class BasicCookieSession extends AbstractSession implements SessionInterface {
+    #cookies: CookiesInterface;
+    #crypto: EncryptionInterface;
+
+    constructor(
+        data: Map<string, any>,
+        flash: Set<string>,
+        cookies: CookiesInterface,
+        crypto: EncryptionInterface,
+    ) {
+        super(data, flash);
+        this.#cookies = cookies;
+        this.#crypto = crypto;
+    }
+
+    async commit(): Promise<this> {
+        const this_data = AbstractSession.__getData(this);
+        const this_flash = AbstractSession.__getFlash(this);
+        const this_keep = AbstractSession.__getKeep(this);
         const data = [
             Object.fromEntries(
-                [...this.#data].filter(([key]) => this.#reflash.has(key) || !this.#flash.has(key)),
+                [...this_data].filter(([key]) => this_flash.has(key) || !this_flash.has(key)),
             ),
-            [...this.#flash].filter(
-                key => (this.#reflash.has(key) || !this.#flash.has(key)) && this.#data.has(key),
-            ),
+            [...this_keep].filter(key => this_keep.has(key) && this_data.has(key)),
         ];
         const encrypted = await this.#crypto.encryptJSON(data);
         this.#cookies.set('session', encrypted);
+        return this;
     }
 
     static async create(ctx: ContextInterface) {
         const cookies = await ctx.get(key.request.cookies);
-        const crypto = await ctx.get(key.encryption);
+        const crypto = ctx.get(key.encryption);
         const session = cookies.get('session');
         if (session) {
             const [data, flash] = await crypto.decryptJSON(session);
             return new BasicCookieSession(new Map(data), new Set(flash), cookies, crypto);
         }
         return new BasicCookieSession(new Map(), new Set(), cookies, crypto);
+    }
+}
+
+export class FileSessionManager {
+    #dir: string;
+    #expires: number;
+    #cookieName: string;
+
+    constructor(
+        dir: string,
+        expires: number = 7 * 24 * 60 * 60 * 1000,
+        cookieName: string = 'sesid',
+    ) {
+        this.#dir = dir;
+        this.#expires = expires;
+        this.#cookieName = cookieName;
+    }
+
+    async createSession(ctx: ContextInterface) {
+        const cookies = await ctx.get(key.request.cookies);
+        let id = cookies.get(this.#cookieName);
+        if (id) {
+            const path = `${this.#dir}/${id.slice(0, 2)}/${id}.json`;
+            if (await exists(path)) {
+                const data = JSON.parse(await Bun.file(path).json());
+                const [expires, data_, flash] = data;
+                if (Date.now() < expires) {
+                    return new BasicFileSession(path, new Map(data_), new Set(flash), expires);
+                } else {
+                    await rm(path);
+                }
+            }
+        }
+        cookies.set(this.#cookieName, (id = randomUUID()));
+        return new BasicFileSession(
+            `${this.#dir}/${id.slice(0, 2)}/${id}.json`,
+            new Map(),
+            new Set(),
+            this.#expires,
+        );
+    }
+
+    async cleanup() {
+        const acceptedModified = Date.now() - this.#expires;
+        const dirs = await readdir(this.#dir);
+        for (const dir of dirs) {
+            const path = `${this.#dir}/${dir}`;
+            const stats = await stat(path);
+            if (stats.mtimeMs < acceptedModified) {
+                await rm(path, { recursive: true });
+                continue;
+            }
+            const files = await readdir(path);
+            for (const file of files) {
+                const path = `${this.#dir}/${dir}/${file}`;
+                const stats = await stat(path);
+                if (stats.mtimeMs < acceptedModified) {
+                    await rm(path);
+                }
+            }
+        }
+    }
+
+    static contextKey = createContextKey('session-manager');
+}
+
+export class BasicFileSession extends AbstractSession implements SessionInterface {
+    #path: string;
+    #expires: number;
+
+    constructor(path: string, data: Map<string, any>, flash: Set<string>, expires: number) {
+        super(data, flash);
+        this.#path = path;
+        this.#expires = expires;
+    }
+
+    async commit(): Promise<this> {
+        const this_data = AbstractSession.__getData(this);
+        const this_flash = AbstractSession.__getFlash(this);
+        const this_keep = AbstractSession.__getKeep(this);
+        const data = [
+            Date.now() + this.#expires,
+            Object.fromEntries(
+                [...this_data].filter(([key]) => this_flash.has(key) || !this_flash.has(key)),
+            ),
+            [...this_keep].filter(key => this_keep.has(key) && this_data.has(key)),
+        ];
+        if (!(await exists(dirname(this.#path)))) {
+            await mkdir(dirname(this.#path), { recursive: true });
+        }
+        await Bun.write(this.#path, JSON.stringify(data));
+        return this;
     }
 }
