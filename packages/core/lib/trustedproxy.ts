@@ -29,8 +29,15 @@ async function mapTrust(trust: string) {
         return trustedProxy.privateNetworks.map(cidr => new IPCIDR(cidr));
     }
     const ips: IPCIDR[] = [];
-    ips.push(...(await resolve(trust, 'A').catch(() => [])).map(ip => new IPCIDR(`${ip}/32`)));
-    ips.push(...(await resolve(trust, 'AAAA').catch(() => [])).map(ip => new IPCIDR(`${ip}/128`)));
+
+    let ipv4s: { address: string }[] = await resolve(trust, 'A').catch(() => []) as any;
+    if(!Array.isArray(ipv4s)) ipv4s = [ipv4s];
+    ips.push(...ipv4s.map(ip => new IPCIDR(`${ip.address}/32`)));
+
+    let ipv6s: { address: string }[] = await resolve(trust, 'AAAA').catch(() => []) as any;
+    if(!Array.isArray(ipv6s)) ipv6s = [ipv6s];
+    ips.push(...ipv6s.map(ip => new IPCIDR(`${ip.address}/128`)));
+    
     if (!ips.length) {
         throw new Error(`Unable to resolve trusted proxy: ${trust}`);
     }
