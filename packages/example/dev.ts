@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import { nodeHttp } from '@kusocat/core/middleware';
 import { app } from './app/app';
 import { RenderInertia, Inertia } from '@kusocat/inertia';
+import { readFile } from 'fs/promises';
 
 const fakeServer = new EventEmitter();
 const vite = await createServer({
@@ -22,7 +23,7 @@ const renderInertia: RenderInertia = async page => {
     const { render } = await vite.ssrLoadModule('/src/ssr.ts', { fixStacktrace: true });
     const template = await vite.transformIndexHtml(
         page.url,
-        await Bun.file(new URL('./frontend/index.html', import.meta.url)).text(),
+        await readFile(new URL('./frontend/index.html', import.meta.url), 'utf-8'),
     );
     return render(template, page);
 };

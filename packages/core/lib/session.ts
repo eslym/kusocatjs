@@ -1,4 +1,4 @@
-import { exists, mkdir, readdir, rm, stat } from 'fs/promises';
+import { exists, mkdir, readFile, readdir, rm, stat } from 'fs/promises';
 import { key, type ContextInterface, createContextKey } from './context';
 import type { CookiesInterface } from './cookies';
 import type { EncryptionInterface } from './encryption';
@@ -148,7 +148,7 @@ export class FileBasedSessionManager {
         if (id) {
             const path = `${this.#dir}/${id.slice(0, 2)}/${id}.json`;
             if (await exists(path)) {
-                const data = JSON.parse(await Bun.file(path).json());
+                const data = JSON.parse(await readFile(path, 'utf-8'));
                 const [expires, data_, flash] = data;
                 if (Date.now() < expires) {
                     return new FileBasedSession(path, new Map(data_), new Set(flash), expires);

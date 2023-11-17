@@ -3,12 +3,13 @@ import { staticFiles } from '@kusocat/core/middleware';
 import { dirname, join } from 'path';
 import { render } from 'frontend/server';
 import { Inertia } from '@kusocat/inertia';
+import { readFile } from 'fs/promises';
 
 const client = import.meta.resolveSync('frontend/client');
 const server = import.meta.resolveSync('frontend/server');
 const manifest = join(dirname(server), 'ssr-manifest.json');
-const version = Bun.SHA1.hash(await Bun.file(manifest).arrayBuffer(), 'hex');
-const template = await Bun.file(client).text();
+const version = Bun.SHA1.hash(await readFile(manifest, 'buffer'), 'hex');
+const template = await readFile(client, 'utf-8');
 
 app.set(
     Inertia.renderContext,

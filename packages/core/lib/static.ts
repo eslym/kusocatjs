@@ -3,6 +3,7 @@ import type { MiddlewareFunction } from './router';
 import { key } from './context';
 import { resolve } from 'path';
 import { stat, exists } from 'fs/promises';
+import { readFile } from 'fs/promises';
 
 export interface StaticMiddlewareOptions {
     exclude?: string | string[];
@@ -20,6 +21,7 @@ export function staticFiles(
             ? options.exclude
             : [];
     const ignored = new Set<string>();
+    const cacheHeaders = new Map<string, Headers>();
     return async (ctx, next) => {
         const req = ctx.get(key.request);
         const url = new URL(req.url);
@@ -35,8 +37,23 @@ export function staticFiles(
                 return next();
             }
         }
-        return new Response(Bun.file(path), {
-            headers: options.headers,
-        });
+        if (!cacheHeaders.has(path)) {
+            const headers = new Headers(options.headers);
+            if (file.mtimeMs) {
+                headers.set('Last-Modified', new Date(file.mtimeMs).toUTCString());
+            }
+            if (file.size) {
+                headers.set('Content-Length', file.size.toString());
+            }
+            headers.set('Content-Type', Bun.file(path).type);
+            cacheHeaders.set(path, headers);
+        }
+        if (req.headers.has('if-modified-since')) {
+            const ifModifiedSince = new Date(req.headers.get('if-modified-since')!);
+            if (ifModifiedSince >= file.mtime) {
+                return new Response(null, { status: 304, headers: cacheHeaders.get(path) });
+            }
+        }
+        return new Response(await readFile(path, 'buffer'), { headers: cacheHeaders.get(path) });
     };
 }
