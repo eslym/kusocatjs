@@ -46,15 +46,17 @@ export class Inertia implements InertiaInterface {
     #version: string | undefined;
     #shared: Map<string, any> = new Map();
     #render: RenderInertia;
+    #headers: Headers;
 
     get isInertia() {
         return this.#request.headers.get('X-Inertia') === 'true';
     }
 
-    constructor(ctx: ContextInterface, request: Request, render: RenderInertia) {
+    constructor(ctx: ContextInterface, headers: HeadersInit = {}) {
         this.#ctx = ctx;
-        this.#request = request;
-        this.#render = render;
+        this.#request = ctx.get(key.request);
+        this.#render = ctx.get(Inertia.renderContext);
+        this.#headers = new Headers(headers);
     }
 
     version(version: string) {
@@ -90,10 +92,17 @@ export class Inertia implements InertiaInterface {
             });
             headers.set('Content-Type', 'text/html');
             headers.set('Content-Length', Buffer.byteLength(html).toString());
+            for (const [key, value] of this.#headers) {
+                headers.append(key, value);
+            }
             return new Response(html, options);
         }
         headers.set('X-Inertia', 'true');
         if (conflict(request, this.#version)) {
+            if (this.#ctx.resolved(key.request.session)) {
+                const session = await this.#ctx.get(key.request.session);
+                session.reflash();
+            }
             headers.set('X-Inertia-Location', request.url);
             return new Response(null, {
                 status: 409,
@@ -161,10 +170,13 @@ export class Inertia implements InertiaInterface {
         };
     }
 
-    static create(ctx: ContextInterface) {
-        const render = ctx.get(key.app).get(Inertia.renderContext);
-        const request = ctx.get(key.request);
-        return new Inertia(ctx, request, render);
+    /**
+     * Headers to append for HTML response, ex: link preload.
+     * @param headers
+     * @returns factory for Inertia instance
+     */
+    static factory(headers: HeadersInit = {}) {
+        return (ctx: ContextInterface) => new Inertia(ctx, headers);
     }
 
     static renderContext = createContextKey<RenderInertia>('inertia.render');

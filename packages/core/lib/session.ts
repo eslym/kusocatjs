@@ -17,14 +17,26 @@ export interface SessionInterface {
     commit(): Promise<SessionInterface>;
 }
 
-abstract class AbstractSession {
+export abstract class BaseSession {
     #data: Map<string, any>;
-    #flash: Set<string>;
-    #keep: Set<string> = new Set();
+    #flash: Set<string> = new Set();
+    #exclude: Set<string>;
+
+    protected get __data() {
+        return this.#data;
+    }
+
+    protected get __flash() {
+        return this.#flash;
+    }
+
+    protected get __exclude() {
+        return this.#exclude;
+    }
 
     constructor(data: Map<string, any>, flash: Set<string>) {
         this.#data = data;
-        this.#flash = flash;
+        this.#exclude = flash;
     }
 
     has(key: string) {
@@ -43,21 +55,29 @@ abstract class AbstractSession {
     flash(key: string, value: any): this {
         this.#data.set(key, value);
         this.#flash.add(key);
+        this.#exclude.delete(key);
         return this;
     }
 
     keep(...keys: string[]): this {
-        keys.forEach(key => this.#keep.add(key));
+        keys.forEach(key => {
+            if (!this.#exclude.has(key)) return;
+            this.#flash.add(key);
+            this.#exclude.delete(key);
+        });
         return this;
     }
 
     reflash(): this {
-        this.#flash.forEach(key => this.#keep.add(key));
+        this.#exclude.forEach(key => this.#flash.add(key));
+        this.#exclude.clear();
         return this;
     }
 
     delete(key: string): this {
         this.#data.delete(key);
+        this.#flash.delete(key);
+        this.#exclude.delete(key);
         return this;
     }
 
@@ -67,21 +87,9 @@ abstract class AbstractSession {
     }
 
     abstract commit(): Promise<this>;
-
-    protected static __getData(session: AbstractSession) {
-        return session.#data;
-    }
-
-    protected static __getFlash(session: AbstractSession) {
-        return session.#flash;
-    }
-
-    protected static __getKeep(session: AbstractSession) {
-        return session.#keep;
-    }
 }
 
-export class BasicCookieSession extends AbstractSession implements SessionInterface {
+export class BasicCookieSession extends BaseSession implements SessionInterface {
     #cookies: CookiesInterface;
     #crypto: EncryptionInterface;
 
@@ -97,14 +105,10 @@ export class BasicCookieSession extends AbstractSession implements SessionInterf
     }
 
     async commit(): Promise<this> {
-        const this_data = AbstractSession.__getData(this);
-        const this_flash = AbstractSession.__getFlash(this);
-        const this_keep = AbstractSession.__getKeep(this);
+        const excludes = this.__exclude;
         const data = [
-            Object.fromEntries(
-                [...this_data].filter(([key]) => this_flash.has(key) || !this_flash.has(key)),
-            ),
-            [...this_keep].filter(key => this_keep.has(key) && this_data.has(key)),
+            Object.fromEntries([...this.__data].filter(([key]) => !excludes.has(key))),
+            [...this.__flash],
         ];
         const encrypted = await this.#crypto.encryptJSON(data);
         this.#cookies.set('session', encrypted);
@@ -123,7 +127,7 @@ export class BasicCookieSession extends AbstractSession implements SessionInterf
     }
 }
 
-export class FileSessionManager {
+export class FileBasedSessionManager {
     #dir: string;
     #expires: number;
     #cookieName: string;
@@ -147,14 +151,14 @@ export class FileSessionManager {
                 const data = JSON.parse(await Bun.file(path).json());
                 const [expires, data_, flash] = data;
                 if (Date.now() < expires) {
-                    return new BasicFileSession(path, new Map(data_), new Set(flash), expires);
+                    return new FileBasedSession(path, new Map(data_), new Set(flash), expires);
                 } else {
                     await rm(path);
                 }
             }
         }
         cookies.set(this.#cookieName, (id = randomUUID()));
-        return new BasicFileSession(
+        return new FileBasedSession(
             `${this.#dir}/${id.slice(0, 2)}/${id}.json`,
             new Map(),
             new Set(),
@@ -186,7 +190,7 @@ export class FileSessionManager {
     static contextKey = createContextKey('session-manager');
 }
 
-export class BasicFileSession extends AbstractSession implements SessionInterface {
+export class FileBasedSession extends BaseSession implements SessionInterface {
     #path: string;
     #expires: number;
 
@@ -197,15 +201,11 @@ export class BasicFileSession extends AbstractSession implements SessionInterfac
     }
 
     async commit(): Promise<this> {
-        const this_data = AbstractSession.__getData(this);
-        const this_flash = AbstractSession.__getFlash(this);
-        const this_keep = AbstractSession.__getKeep(this);
+        const excludes = this.__exclude;
         const data = [
             Date.now() + this.#expires,
-            Object.fromEntries(
-                [...this_data].filter(([key]) => this_flash.has(key) || !this_flash.has(key)),
-            ),
-            [...this_keep].filter(key => this_keep.has(key) && this_data.has(key)),
+            Object.fromEntries([...this.__data].filter(([key]) => !excludes.has(key))),
+            [...this.__flash],
         ];
         if (!(await exists(dirname(this.#path)))) {
             await mkdir(dirname(this.#path), { recursive: true });
