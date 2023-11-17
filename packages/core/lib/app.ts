@@ -207,7 +207,7 @@ export class App extends Context {
         const ctx = new RequestContext(this, server, request);
 
         ctx.set(key.request.address, addr)
-            .register(key.request.cookies, Cookies.create)
+            .register(key.request.cookies, Cookies.factory)
             .register(key.request.errorHandler, () => defaultErrorHandler);
 
         try {

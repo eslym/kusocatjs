@@ -37,7 +37,7 @@ export class Cookies implements CookiesInterface {
         return Array.from(this.#headers.values());
     }
 
-    static async create(ctx: ContextInterface) {
+    static async factory(ctx: ContextInterface) {
         return new Cookies(ctx.get(key.request));
     }
 }
