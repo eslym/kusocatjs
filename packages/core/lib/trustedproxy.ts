@@ -31,14 +31,10 @@ async function mapTrust(trust: string) {
     }
     const ips: IPCIDR[] = [];
 
-    await lookup(trust, { family: 4 })
-        .then(addr => ips.push(new IPCIDR(`${addr.address}/32`)))
-        .catch(() => {});
-    await lookup(trust, { family: 6 })
-        .then(addr => ips.push(new IPCIDR(`${addr.address}/128`)))
-        .catch(() => {});
+    await lookup(trust, { family: 4 }).then(addr => ips.push(new IPCIDR(`${addr.address}/32`))).catch(() => {});
+    await lookup(trust, { family: 6 }).then(addr => ips.push(new IPCIDR(`${addr.address}/128`))).catch(() => {});
 
-    if (!ips.length) {
+    if(!ips.length) {
         throw new Error(`Unable to resolve trusted proxy: ${trust}`);
     }
     return ips;
@@ -56,11 +52,7 @@ export const trustedProxy = Object.assign(
     ) {
         const proxies = await Promise.all(
             [trusted, ...layers].map(async trust =>
-                (
-                    await Promise.all(
-                        typeof trust === 'string' ? [mapTrust(trust)] : trust.map(mapTrust),
-                    )
-                ).flat(),
+                (await Promise.all(typeof trust === 'string' ? [mapTrust(trust)] : trust.map(mapTrust))).flat(),
             ),
         );
         // use app.on('request') is executed before router resolves, so we want it to be here.
