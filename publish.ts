@@ -13,9 +13,15 @@ const packageData: Map<
     }
 > = new Map();
 
-const argv = process.argv.slice(2);
+const argv = Bun.argv.slice(2);
 
 if (argv.length) {
+    argv.forEach(pkg => {
+        if(!packages.includes(pkg)) {
+            console.error(`Package ${pkg} not found.`);
+            process.exit(1);
+        }
+    });
     packages = packages.filter(pkg => argv.includes(pkg));
 }
 

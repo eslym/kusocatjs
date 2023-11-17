@@ -4,6 +4,7 @@ import IPCIDR from 'ip-cidr';
 import { key, createContextKey } from './context';
 import type { SocketAddress } from 'bun';
 import { cloneRequest } from './utils';
+import { resolve } from 'dns/promises';
 
 const validForwardedProto = new Set(['http', 'https', 'ws', 'wss']);
 
@@ -11,17 +12,29 @@ function isTrusted(ip: string, trusted: IPCIDR[]) {
     return trusted.some(trust => trust.contains(ip));
 }
 
-function mapTrust(trust: string) {
+async function mapTrust(trust: string) {
     if (isIPv6(trust)) {
-        return new IPCIDR(`${trust}/128`);
+        return [new IPCIDR(`${trust}/128`)];
     }
     if (isIPv4(trust)) {
-        return new IPCIDR(`${trust}/32`);
+        return [new IPCIDR(`${trust}/32`)];
     }
     if (IPCIDR.isValidCIDR(trust)) {
-        return new IPCIDR(trust);
+        return [new IPCIDR(trust)];
     }
-    throw new Error(`Invalid trusted proxy: ${trust}`);
+    if (trust === 'loopback') {
+        return trustedProxy.loopback.map(cidr => new IPCIDR(cidr));
+    }
+    if (trust === 'private') {
+        return trustedProxy.privateNetworks.map(cidr => new IPCIDR(cidr));
+    }
+    const ips: IPCIDR[] = [];
+    ips.push(...(await resolve(trust, 'A').catch(() => [])).map(ip => new IPCIDR(`${ip}/32`)));
+    ips.push(...(await resolve(trust, 'AAAA').catch(() => [])).map(ip => new IPCIDR(`${ip}/128`)));
+    if (!ips.length) {
+        throw new Error(`Unable to resolve trusted proxy: ${trust}`);
+    }
+    return ips;
 }
 
 const originalRequest = createContextKey<Request>('trustedproxy.original.request');
@@ -29,9 +42,19 @@ const originalRequest = createContextKey<Request>('trustedproxy.original.request
 const originalAddress = createContextKey<SocketAddress>('trustedproxy.original.address');
 
 export const trustedProxy = Object.assign(
-    function trustedProxy(app: App, trusted: string | string[], ...layers: (string | string[])[]) {
-        const proxies = [trusted, ...layers].map(trust =>
-            typeof trust === 'string' ? [mapTrust(trust)] : trust.map(mapTrust),
+    async function trustedProxy(
+        app: App,
+        trusted: string | string[],
+        ...layers: (string | string[])[]
+    ) {
+        const proxies = await Promise.all(
+            [trusted, ...layers].map(async trust =>
+                (
+                    await Promise.all(
+                        typeof trust === 'string' ? [mapTrust(trust)] : trust.map(mapTrust),
+                    )
+                ).flat(),
+            ),
         );
         // use app.on('request') is executed before router resolves, so we want it to be here.
         return app.on('request', ctx => {
