@@ -55,7 +55,7 @@ export class Inertia implements InertiaInterface {
     constructor(ctx: ContextInterface, headers: HeadersInit = {}) {
         this.#ctx = ctx;
         this.#request = ctx.get(key.request);
-        this.#render = ctx.get(Inertia.renderContext);
+        this.#render = ctx.get(key.app).get(Inertia.renderContext);
         this.#headers = new Headers(headers);
     }
 
