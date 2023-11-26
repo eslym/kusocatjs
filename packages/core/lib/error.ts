@@ -82,12 +82,14 @@ export class HTTPError extends Error {
     }
 }
 
-export class RedirectError<
-    S extends 300 | 301 | 302 | 303 | 304 | 305 | 306 | 307 | 308 = 302,
-> extends HTTPError {
+export class RedirectError extends HTTPError {
     #location: string;
 
-    constructor(location: string, status: S = 302 as S, headers?: HeadersInit) {
+    constructor(
+        location: string,
+        status: 300 | 301 | 302 | 303 | 304 | 305 | 306 | 307 | 308 = 302,
+        headers?: HeadersInit,
+    ) {
         super(status, undefined, headers);
         this.#location = location;
     }

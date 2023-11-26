@@ -8,7 +8,7 @@ import type {
     UnixTLSWebSocketServeOptions,
 } from 'bun';
 import { Context, key, type ContextEvents } from './context';
-import { HTTPError, defaultErrorHandler } from './error';
+import { HTTPError, RedirectError, defaultErrorHandler } from './error';
 import { type MiddlewareFunction, type ResponseType } from './router';
 import { Cookies } from './cookies';
 import { defaultLogging } from './logging';
@@ -71,8 +71,86 @@ type RequestContextEvents = {
     finished: [context: RequestContext, response: Response];
 };
 
+type HelperFunction = (ctx: RequestContext, ...args: any[]) => any;
+
+type Helper<T extends HelperFunction> = T extends {
+    (ctx: RequestContext, ...args: infer A1): infer R1;
+    (ctx: RequestContext, ...args: infer A2): infer R2;
+    (ctx: RequestContext, ...args: infer A3): infer R3;
+    (ctx: RequestContext, ...args: infer A4): infer R4;
+    (ctx: RequestContext, ...args: infer A5): infer R5;
+    (ctx: RequestContext, ...args: infer A6): infer R6;
+}
+    ? {
+          (...args: A1): R1;
+          (...args: A2): R2;
+          (...args: A3): R3;
+          (...args: A4): R4;
+          (...args: A5): R5;
+          (...args: A6): R6;
+      }
+    : T extends {
+          (ctx: RequestContext, ...args: infer A1): infer R1;
+          (ctx: RequestContext, ...args: infer A2): infer R2;
+          (ctx: RequestContext, ...args: infer A3): infer R3;
+          (ctx: RequestContext, ...args: infer A4): infer R4;
+          (ctx: RequestContext, ...args: infer A5): infer R5;
+      }
+    ? {
+          (...args: A1): R1;
+          (...args: A2): R2;
+          (...args: A3): R3;
+          (...args: A4): R4;
+          (...args: A5): R5;
+      }
+    : T extends {
+          (ctx: RequestContext, ...args: infer A1): infer R1;
+          (ctx: RequestContext, ...args: infer A2): infer R2;
+          (ctx: RequestContext, ...args: infer A3): infer R3;
+          (ctx: RequestContext, ...args: infer A4): infer R4;
+      }
+    ? {
+          (...args: A1): R1;
+          (...args: A2): R2;
+          (...args: A3): R3;
+          (...args: A4): R4;
+      }
+    : T extends {
+          (ctx: RequestContext, ...args: infer A1): infer R1;
+          (ctx: RequestContext, ...args: infer A2): infer R2;
+          (ctx: RequestContext, ...args: infer A3): infer R3;
+      }
+    ? {
+          (...args: A1): R1;
+          (...args: A2): R2;
+          (...args: A3): R3;
+      }
+    : T extends {
+          (ctx: RequestContext, ...args: infer A1): infer R1;
+          (ctx: RequestContext, ...args: infer A2): infer R2;
+      }
+    ? {
+          (...args: A1): R1;
+          (...args: A2): R2;
+      }
+    : T extends {
+          (ctx: RequestContext, ...args: infer A): infer R;
+      }
+    ? (...args: A) => R
+    : never;
+
 export interface RequestContext
     extends EventEmitter<ContextEvents<RequestContext, RequestContextEvents>> {}
+
+type RedirectResponse = Response & {
+    with(data: Record<string, any>): RedirectResponsePromise;
+    with(key: string, value: any): RedirectResponsePromise;
+};
+
+type RedirectResponsePromise = Promise<RedirectResponse> & {
+    with(data: Record<string, any>): RedirectResponsePromise;
+    with(key: string, value: any): RedirectResponsePromise;
+};
 
 export class RequestContext extends Context {
     #app: App;
@@ -112,6 +190,78 @@ export class RequestContext extends Context {
 
     eventNames() {
         return ['resolved', 'upgraded', 'finishing', 'finished'];
+    }
+
+    url(path: string): string;
+    url(path: string, query: Record<string, string>): string;
+    url(path: string, query: [string, string][]): string;
+    url(path: string, query: URLSearchParams): string;
+    url(path: string, query?: Record<string, string> | [string, string][] | URLSearchParams) {
+        const url = new URL(path, this.get(key.request).url);
+        if (query) {
+            if (query instanceof URLSearchParams) {
+            } else {
+                url.search = new URLSearchParams(query).toString();
+            }
+        } else {
+            url.search = '';
+        }
+        return url.toString();
+    }
+
+    redirect(
+        url: string,
+        status: 300 | 301 | 302 | 303 | 304 | 305 | 306 | 307 | 308 = 302,
+        headers?: HeadersInit,
+    ): RedirectResponsePromise | RedirectResponse {
+        const res = this.get(key.request.errorHandler).render(
+            new RedirectError(url, status, headers),
+        );
+        const self = this;
+        const promiseFluent = {
+            with(
+                this: RedirectResponsePromise,
+                keyOrData: string | Record<string, any>,
+                value?: any,
+            ): RedirectResponsePromise {
+                return Object.assign(
+                    this.then(res => res.with(keyOrData as any, value)),
+                    promiseFluent,
+                );
+            },
+        };
+        const resFluent = {
+            with(
+                this: RedirectResponse,
+                keyOrData: string | Record<string, any>,
+                value?: any,
+            ): RedirectResponsePromise {
+                return Object.assign(
+                    self.get(key.request.session).then(session => {
+                        if (typeof keyOrData === 'string') {
+                            session.flash(keyOrData, value);
+                        } else {
+                            Object.entries(keyOrData).forEach(([key, value]) =>
+                                session.flash(key, value),
+                            );
+                        }
+                        return this;
+                    }),
+                    promiseFluent,
+                );
+            },
+        };
+        if (res instanceof Promise) {
+            return Object.assign(
+                res.then(res => Object.assign(res, resFluent)),
+                promiseFluent,
+            );
+        }
+        return Object.assign(res, resFluent);
+    }
+
+    helper<T extends HelperFunction>(fn: T): Helper<T> {
+        return ((...args: any[]) => fn(this, ...args)) as Helper<T>;
     }
 }
 
