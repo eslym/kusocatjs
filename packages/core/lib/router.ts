@@ -155,9 +155,9 @@ export interface RouterInterface {
 }
 
 export interface RouteRegistrarInterface {
-    prefix(prefix: string): RouteRegistrar;
-    name(name: string): RouteRegistrar;
-    use(middleware: MiddlewareFunction | MiddlewareFunction[]): RouteRegistrar;
+    prefix(prefix: string): RouteRegistrarInterface;
+    name(name: string): RouteRegistrarInterface;
+    use(middleware: MiddlewareFunction | MiddlewareFunction[]): RouteRegistrarInterface;
 
     get: RegisterRouteFunction;
     post: RegisterRouteFunction;
@@ -322,15 +322,15 @@ export class Router implements RouterInterface, RouteRegistrarInterface {
         return path;
     }
 
-    prefix(prefix: string): RouteRegistrar {
+    prefix(prefix: string): RouteRegistrarInterface {
         return new RouteRegistrar(this).prefix(prefix);
     }
 
-    name(name: string): RouteRegistrar {
+    name(name: string): RouteRegistrarInterface {
         return new RouteRegistrar(this).name(name);
     }
 
-    use(middleware: MiddlewareFunction | MiddlewareFunction[]): RouteRegistrar {
+    use(middleware: MiddlewareFunction | MiddlewareFunction[]): RouteRegistrarInterface {
         return new RouteRegistrar(this).use(middleware);
     }
 
@@ -637,7 +637,7 @@ class RouteRegistrar implements RouteRegistrarInterface {
         const path = typeof a1 === 'string' ? a1 : '/';
         const callback =
             typeof a1 === 'function' ? a1 : (a2 as (group: RouteRegistrarInterface) => void);
-        const options = typeof a1 === 'function' ? (a2 as GroupOptions) : a3 ?? {};
+        const options = (typeof a1 === 'function' ? (a2 as GroupOptions) : a3) ?? {};
         const opts = this.#mergeOptions(options, path);
         this.#parent.group(path, callback, opts);
         return this;
