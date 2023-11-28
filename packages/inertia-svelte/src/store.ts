@@ -6,6 +6,7 @@ export interface RenderContext {
     component?: ComponentType;
     layout?: ComponentType | ComponentType[];
     page?: Page;
+    key?: number;
 }
 
 export const browserStore = writable<RenderContext>({});

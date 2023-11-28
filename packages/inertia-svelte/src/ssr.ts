@@ -26,6 +26,7 @@ export function createSSRRender(
             component: module.default,
             layout: module.layout,
             page,
+            key: performance.now(),
         });
         const context = new Map([[contextKey, store]]);
         return (App as any as SvelteSSRComponent).render({}, { context });

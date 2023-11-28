@@ -1,9 +1,11 @@
 import { router, mergeDataIntoQueryString, type VisitOptions } from '@inertiajs/core';
 
-export function shouldIntercept(event: MouseEvent): boolean {
+export function shouldIntercept(event: MouseEvent, selector?: string): boolean {
     if (event.defaultPrevented) return false;
-    const isLink = event.target && (event.target as HTMLElement).tagName.toLowerCase() === 'a';
+    const isLink =
+        event.target instanceof HTMLElement && event.target.tagName.toLowerCase() === 'a';
     if (!isLink) return false;
+    if (selector && !event.target.matches(selector)) return false;
     const target = event.target as HTMLAnchorElement;
     return !(
         target.isContentEditable ||
@@ -29,8 +31,11 @@ function fireEvent(node: HTMLElement, name: string, eventOptions: any = {}) {
     return node.dispatchEvent(new CustomEvent(name, eventOptions));
 }
 
-export function link(node: HTMLElement, options: VisitOptions & { href?: string } = {}) {
-    function update(newOptions: VisitOptions & { href?: string }) {
+export function link(
+    node: HTMLElement,
+    options: VisitOptions & { href?: string; selector?: string } = {},
+) {
+    function update(newOptions: VisitOptions & { href?: string; selector?: string }) {
         options = newOptions;
     }
 
@@ -38,7 +43,7 @@ export function link(node: HTMLElement, options: VisitOptions & { href?: string 
         if (!shouldIntercept(event as any)) return;
         event.preventDefault();
         const target = event.target as HTMLElement;
-        if (target.ariaDisabled === 'true') return;
+        if (target.ariaDisabled !== null && target.ariaDisabled !== 'false') return;
         const [href, data] = hrefAndData(target, options);
         router.visit(href, {
             onCancelToken: () => fireEvent(target, 'cancel-token'),

@@ -6,6 +6,7 @@ import App from './App.svelte';
 export { useForm } from './form';
 export { usePage } from './page';
 export { useRemember } from './remember';
+export { useStateKey } from './state-key';
 export { link } from './link';
 
 export interface CreateAppOptions {
@@ -25,6 +26,23 @@ type Awaitable<T> = T | Promise<T>;
 
 export type ResolveComponent = (name: string) => Awaitable<SveltePageComponentModule>;
 
+/**
+ * A noop function which can used for svelte reactive statements.
+ *
+ * ```svelte
+ * <script>
+ *     import { noop } from '@inertiajs/inertia-svelte';
+ *     const createForm = useForm(() => user);
+ *     // recreate the form on user changed
+ *     $: f = noop(user.id) ?? createForm();
+ *     $: form = f.form;
+ *     $: data = f.data;
+ *     $: errors = f.errors;
+ * </script>
+ * ```
+ */
+export const noop: (...args: any[]) => void = () => {};
+
 export function createInertiaApp(options: CreateAppOptions): SvelteComponent {
     const target: HTMLElement =
         typeof options.target === 'string'
@@ -38,19 +56,21 @@ export function createInertiaApp(options: CreateAppOptions): SvelteComponent {
             component: module.default,
             layout: module.layout,
             page,
+            key: performance.now(),
         });
     });
 
     router.init({
         initialPage: page,
         resolveComponent: resolve,
-        swapComponent: async ({ component, page }) => {
+        swapComponent: async ({ component, page, preserveState }) => {
             const { default: com, layout } = component as SveltePageComponentModule;
-            browserStore.set({
+            browserStore.update(({ key }) => ({
                 component: com,
                 layout: layout,
                 page,
-            });
+                key: preserveState ? key : performance.now(),
+            }));
         },
     });
 

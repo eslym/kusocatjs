@@ -1,5 +1,6 @@
 import { router, type Method, type VisitOptions } from '@inertiajs/core';
 import { writable, type Writable, type Readable } from 'svelte/store';
+import type { AxiosProgressEvent } from 'axios';
 import isEqual from 'lodash.isequal';
 import cloneDeep from 'lodash.clonedeep';
 
@@ -14,11 +15,12 @@ interface FormState {
 interface State {
     dirty: boolean;
     processing: boolean;
+    progress?: AxiosProgressEvent;
     success?: boolean;
 }
 
 interface RememberState<T extends Record<string, any>> {
-    state: State;
+    state: Pick<State, 'dirty' | 'success'>;
     data: T;
     errors: Record<string, string[]>;
 }
@@ -40,6 +42,18 @@ interface UseForm<Data extends Record<string, any>> {
     errors: Readable<Record<string, string[]>>;
 }
 
+function value<T>(value: T, notifier: (val: T) => void) {
+    return {
+        get value() {
+            return value;
+        },
+        set value(val) {
+            value = val;
+            notifier(val);
+        },
+    };
+}
+
 export function useForm<T extends Record<string, any>>(data: T, rememberKey?: string): UseForm<T>;
 export function useForm<T extends Record<string, any> = Record<string, any>>(
     rememberKey?: string,
@@ -58,7 +72,6 @@ export function useForm<T extends Record<string, any> = {}>(
     let state: RememberState<T> = (router.restore(key) as any) || {
         state: {
             dirty: false,
-            processing: false,
         },
         data: cloneDeep(defaults),
         errors: {},
@@ -66,17 +79,30 @@ export function useForm<T extends Record<string, any> = {}>(
     let transform: (data: T) => any = data => data;
     let cancelToken: { cancel(): void } | undefined = undefined;
     let errorsStore = writable(state.errors);
-    const stateAccessor = {
+    let processing = value(false, () => stateStore.set(stateAccessor));
+    let progress = value<AxiosProgressEvent | undefined>(undefined, () =>
+        stateStore.set(stateAccessor),
+    );
+    const stateAccessor: State = {
         get dirty() {
             return state.state.dirty;
         },
         get processing() {
-            return state.state.processing;
+            return processing.value;
+        },
+        get progress() {
+            return progress.value;
+        },
+        get success() {
+            return state.state.success;
         },
     };
     const baseDataStore = writable(state.data);
     const stateStore = writable(stateAccessor);
-    function updateState<T extends keyof State>(key: T, value: State[T]) {
+    function updateState<T extends keyof (typeof state)['state']>(
+        key: T,
+        value: (typeof state)['state'][T],
+    ) {
         if (state.state[key] === value) return;
         state.state[key] = value;
         stateStore.set(stateAccessor);
@@ -161,8 +187,12 @@ export function useForm<T extends Record<string, any> = {}>(
                     return options.onBefore?.(visit);
                 },
                 onStart: visit => {
-                    updateState('processing', true);
+                    processing.value = true;
                     options.onStart?.(visit);
+                },
+                onProgress: event => {
+                    progress.value = event;
+                    options.onProgress?.(event);
                 },
                 onSuccess: page => {
                     errorsStore.set((state.errors = {}));
@@ -171,13 +201,20 @@ export function useForm<T extends Record<string, any> = {}>(
                     options.onSuccess?.(page);
                 },
                 onError: errors => {
-                    errorsStore.set((state.errors = errors as any));
+                    errorsStore.set(
+                        (state.errors = Object.fromEntries(
+                            Object.entries(errors).map(([k, v]) => [
+                                k,
+                                typeof v === 'string' ? [v] : v,
+                            ]),
+                        )),
+                    );
                     router.remember(state, key);
                     updateState('success', false);
                     options.onError?.(errors);
                 },
                 onFinish: visit => {
-                    updateState('processing', false);
+                    processing.value = false;
                     options.onFinish?.(visit);
                 },
                 data: transform(cloneDeep(state.data)),
