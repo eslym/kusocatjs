@@ -1,10 +1,10 @@
-import { getContext, type ComponentType } from 'svelte';
+import { getContext } from 'svelte';
 import { writable, type Writable } from 'svelte/store';
 import type { Page } from '@inertiajs/core';
+import type { SveltePageComponentModule } from './index';
 
 export interface RenderContext {
-    component?: ComponentType;
-    layout?: ComponentType | ComponentType[];
+    component?: SveltePageComponentModule;
     page?: Page;
     key?: number;
 }

@@ -8,14 +8,8 @@
     const store: Writable<RenderContext> = useStore();
 
     setContext(contextKey, store);
-
-    $: components = Array.isArray($store.layout)
-        ? [...$store.layout, $store.component!]
-        : $store.layout
-        ? [$store.layout, $store.component!]
-        : [$store.component!];
 </script>
 
 {#if $store.component}
-    <Render {components} props={$store.page?.props} />
+    <Render component={$store.component} props={$store.page?.props} state={$store.key} />
 {/if}

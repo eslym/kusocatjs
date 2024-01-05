@@ -1,18 +1,54 @@
-<script lang="ts">
+<script lang="ts" context="module">
     import type { ComponentType } from 'svelte';
 
-    export let components: ComponentType[];
-    export let props: any;
+    const componentKeys = new Map<ComponentType, string>();
 
-    $: first = components[0];
+    function getComponentKey(component: ComponentType) {
+        if (!componentKeys.has(component)) {
+            componentKeys.set(
+                component,
+                Math.floor(performance.now() * 1e12).toString(36) +
+                    '-' +
+                    Math.floor(Math.random() * 1e12).toString(36),
+            );
+        }
 
-    $: rest = components.slice(1);
+        return componentKeys.get(component);
+    }
 </script>
 
-{#if rest.length}
-    <svelte:component this={first} {...props}>
-        <svelte:self components={rest} {props} />
-    </svelte:component>
+<script lang="ts">
+    import type { SveltePageComponentModule } from './index';
+
+    export let component: SveltePageComponentModule;
+    export let props: any;
+
+    export let state: number | undefined = undefined;
+
+    let layout: SveltePageComponentModule | undefined = undefined;
+
+    $: Promise.resolve(component.layout).then(l => (layout = l));
+
+    $: key =
+        ('preserveState' in component && component.preserveState) || !('preserveState' in component)
+            ? getComponentKey(component.default)
+            : state;
+</script>
+
+{#if component.layout}
+    {#if layout}
+        <svelte:self component={layout} {props}>
+            {#key key}
+                <svelte:component this={component.default} {...props}>
+                    <slot />
+                </svelte:component>
+            {/key}
+        </svelte:self>
+    {/if}
 {:else}
-    <svelte:component this={first} {...props}></svelte:component>
+    {#key key}
+        <svelte:component this={component.default} {...props}>
+            <slot />
+        </svelte:component>
+    {/key}
 {/if}

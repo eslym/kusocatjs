@@ -27,12 +27,19 @@ interface RememberState<T extends Record<string, any>> {
 
 interface FormController<T extends Record<string, any>> extends Readable<FormState> {
     reset(...fields: string[]): this;
+
     defaults(data: T): this;
+
     defaults(): T;
+
     transform(transformer: (data: T) => any): this;
+
     submit(method: Method, url: string, options?: Omit<VisitOptions, 'method' | 'data'>): void;
+
     error(key: string, errors: string | string[], append?: boolean): this;
+
     clearErrors(...keys: string[]): this;
+
     cancel(): this;
 }
 
@@ -99,6 +106,7 @@ export function useForm<T extends Record<string, any> = {}>(
     };
     const baseDataStore = writable(state.data);
     const stateStore = writable(stateAccessor);
+
     function updateState<T extends keyof (typeof state)['state']>(
         key: T,
         value: (typeof state)['state'][T],
@@ -108,6 +116,7 @@ export function useForm<T extends Record<string, any> = {}>(
         stateStore.set(stateAccessor);
         router.remember(state, key);
     }
+
     function setData(data: T) {
         baseDataStore.set((state.data = data));
         const dirty = !isEqual(data, defaults);
@@ -116,6 +125,7 @@ export function useForm<T extends Record<string, any> = {}>(
         }
         router.remember(state, key);
     }
+
     function updateData(updater: (data: T) => T) {
         setData(updater(state.data));
     }

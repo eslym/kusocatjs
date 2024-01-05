@@ -19,7 +19,7 @@ export interface CreateAppOptions {
 
 export interface SveltePageComponentModule {
     default: ComponentType;
-    layout?: ComponentType | ComponentType[];
+    layout?: Promise<SveltePageComponentModule>;
 }
 
 type Awaitable<T> = T | Promise<T>;
@@ -41,7 +41,7 @@ export type ResolveComponent = (name: string) => Awaitable<SveltePageComponentMo
  * </script>
  * ```
  */
-export const noop: (...args: any[]) => void = () => {};
+export const noop: (...args: any[]) => unknown = () => {};
 
 export function createInertiaApp(options: CreateAppOptions): SvelteComponent {
     const target: HTMLElement =
@@ -53,8 +53,7 @@ export function createInertiaApp(options: CreateAppOptions): SvelteComponent {
     const resolve = (name: string) => Promise.resolve(options.resolve(name));
     resolve(page.component).then(module => {
         browserStore.set({
-            component: module.default,
-            layout: module.layout,
+            component: module as SveltePageComponentModule,
             page,
             key: performance.now(),
         });
@@ -64,10 +63,8 @@ export function createInertiaApp(options: CreateAppOptions): SvelteComponent {
         initialPage: page,
         resolveComponent: resolve,
         swapComponent: async ({ component, page, preserveState }) => {
-            const { default: com, layout } = component as SveltePageComponentModule;
             browserStore.update(({ key }) => ({
-                component: com,
-                layout: layout,
+                component: component as SveltePageComponentModule,
                 page,
                 key: preserveState ? key : performance.now(),
             }));

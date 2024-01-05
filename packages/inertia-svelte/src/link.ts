@@ -3,10 +3,11 @@ import { router, mergeDataIntoQueryString, type VisitOptions } from '@inertiajs/
 export function shouldIntercept(event: MouseEvent, selector?: string): boolean {
     if (event.defaultPrevented) return false;
     const isLink =
-        event.target instanceof HTMLElement && event.target.tagName.toLowerCase() === 'a';
+        event.currentTarget instanceof HTMLElement &&
+        event.currentTarget.tagName.toLowerCase() === 'a';
     if (!isLink) return false;
-    if (selector && !event.target.matches(selector)) return false;
-    const target = event.target as HTMLAnchorElement;
+    if (selector && !event.currentTarget.matches(selector)) return false;
+    const target = event.currentTarget as HTMLAnchorElement;
     return !(
         target.isContentEditable ||
         (target.target && target.target !== '_self') ||
@@ -42,7 +43,7 @@ export function link(
     function onClick(event: MouseEvent) {
         if (!shouldIntercept(event as any)) return;
         event.preventDefault();
-        const target = event.target as HTMLElement;
+        const target = event.currentTarget as HTMLElement;
         if (target.ariaDisabled !== null && target.ariaDisabled !== 'false') return;
         const [href, data] = hrefAndData(target, options);
         router.visit(href, {
