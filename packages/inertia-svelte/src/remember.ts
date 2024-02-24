@@ -1,6 +1,7 @@
 import { type Writable, writable, get } from 'svelte/store';
 import { router } from '@inertiajs/core';
 import { useStateKey } from './state-key';
+import { tick } from 'svelte';
 
 type NonFunction = string | number | bigint | boolean | null | undefined | symbol | object;
 
@@ -14,7 +15,11 @@ export function useRemember<T extends NonFunction>(
     const init = typeof initial === 'function' ? initial : () => initial;
 
     const base = writable<T>(restored === undefined ? init() : restored, set => {
-        return state.subscribe(() => {
+        const restored = router.restore(key) as T;
+        set(restored === undefined ? init() : restored);
+        return state.subscribe(async () => {
+            // important to wait for the state to be updated for the init function to be synced
+            await tick();
             const restored = router.restore(key) as T;
             set(restored === undefined ? init() : restored);
         });

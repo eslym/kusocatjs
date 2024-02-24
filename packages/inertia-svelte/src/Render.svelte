@@ -1,7 +1,10 @@
 <script lang="ts" context="module">
     import type { ComponentType } from 'svelte';
+    import type { SveltePageComponentModule } from './index';
 
     const componentKeys = new Map<ComponentType, string>();
+
+    const layouts = new WeakMap<Promise<SveltePageComponentModule>, SveltePageComponentModule>();
 
     function getComponentKey(component: ComponentType) {
         if (!componentKeys.has(component)) {
@@ -18,8 +21,6 @@
 </script>
 
 <script lang="ts">
-    import type { SveltePageComponentModule } from './index';
-
     export let component: SveltePageComponentModule;
     export let props: any;
 
@@ -27,7 +28,20 @@
 
     let layout: SveltePageComponentModule | undefined = undefined;
 
-    $: Promise.resolve(component.layout).then(l => (layout = l));
+    $: if (component.layout instanceof Promise) {
+        if (layouts.has(component.layout)) {
+            layout = layouts.get(component.layout);
+        } else {
+            const promise = component.layout;
+            layout = undefined;
+            promise.then(com => {
+                layouts.set(promise, com);
+                layout = com;
+            });
+        }
+    } else {
+        layout = component.layout;
+    }
 
     $: key =
         ('preserveState' in component && component.preserveState) || !('preserveState' in component)

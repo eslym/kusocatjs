@@ -1,8 +1,10 @@
 import { router, type Method, type VisitOptions } from '@inertiajs/core';
-import { writable, type Writable, type Readable } from 'svelte/store';
+import { writable, type Writable, type Readable, get } from 'svelte/store';
 import type { AxiosProgressEvent } from 'axios';
 import isEqual from 'lodash.isequal';
 import cloneDeep from 'lodash.clonedeep';
+import { onMount } from 'svelte';
+import { useRemember } from './remember';
 
 const formKey = '__inertia_form_data';
 
@@ -10,6 +12,7 @@ interface FormState {
     readonly dirty: boolean;
     readonly processing: boolean;
     readonly success?: boolean;
+    readonly progress?: AxiosProgressEvent;
 }
 
 interface State {
@@ -20,8 +23,9 @@ interface State {
 }
 
 interface RememberState<T extends Record<string, any>> {
-    state: Pick<State, 'dirty' | 'success'>;
+    success?: boolean;
     data: T;
+    defaults: T;
     errors: Record<string, string[]>;
 }
 
@@ -36,9 +40,19 @@ interface FormController<T extends Record<string, any>> extends Readable<FormSta
 
     submit(method: Method, url: string, options?: Omit<VisitOptions, 'method' | 'data'>): void;
 
+    post(url: string, options?: Omit<VisitOptions, 'method' | 'data'>): void;
+
+    put(url: string, options?: Omit<VisitOptions, 'method' | 'data'>): void;
+
+    patch(url: string, options?: Omit<VisitOptions, 'method' | 'data'>): void;
+
+    delete(url: string, options?: Omit<VisitOptions, 'method' | 'data'>): void;
+
     error(key: string, errors: string | string[], append?: boolean): this;
 
     clearErrors(...keys: string[]): this;
+
+    restore(): this;
 
     cancel(): this;
 }
@@ -49,19 +63,17 @@ interface UseForm<Data extends Record<string, any>> {
     errors: Readable<Record<string, string[]>>;
 }
 
-function value<T>(value: T, notifier: (val: T) => void) {
-    return {
-        get value() {
-            return value;
-        },
-        set value(val) {
-            value = val;
-            notifier(val);
-        },
+function touch<T>(cb: (data: T) => void): (data: T) => T {
+    return (data: T) => {
+        cb(data);
+        return data;
     };
 }
 
-export function useForm<T extends Record<string, any>>(data: T, rememberKey?: string): UseForm<T>;
+export function useForm<T extends Record<string, any>>(
+    data: T | (() => T),
+    rememberKey?: string,
+): UseForm<T>;
 export function useForm<T extends Record<string, any> = Record<string, any>>(
     rememberKey?: string,
 ): UseForm<T>;
@@ -73,111 +85,130 @@ export function useForm<T extends Record<string, any> = {}>(
         typeof dataOrRememberKey === 'string'
             ? formKey + ':' + (dataOrRememberKey ?? 'default')
             : formKey + ':' + (rememberKey ?? 'default');
-    let defaults: T = cloneDeep(
-        typeof dataOrRememberKey === 'object' ? dataOrRememberKey : {},
-    ) as any;
-    let state: RememberState<T> = (router.restore(key) as any) || {
-        state: {
-            dirty: false,
-        },
-        data: cloneDeep(defaults),
-        errors: {},
-    };
-    let transform: (data: T) => any = data => data;
-    let cancelToken: { cancel(): void } | undefined = undefined;
-    let errorsStore = writable(state.errors);
-    let processing = value(false, () => stateStore.set(stateAccessor));
-    let progress = value<AxiosProgressEvent | undefined>(undefined, () =>
-        stateStore.set(stateAccessor),
+    const init =
+        typeof dataOrRememberKey === 'function'
+            ? dataOrRememberKey
+            : typeof dataOrRememberKey === 'object'
+              ? () => dataOrRememberKey
+              : () => ({}) as T;
+
+    const rememberStore = useRemember<RememberState<T>>(
+        () => ({
+            data: cloneDeep(init()),
+            defaults: cloneDeep(init()),
+            errors: {},
+        }),
+        key,
     );
-    const stateAccessor: State = {
-        get dirty() {
-            return state.state.dirty;
-        },
-        get processing() {
-            return processing.value;
-        },
-        get progress() {
-            return progress.value;
-        },
-        get success() {
-            return state.state.success;
-        },
-    };
-    const baseDataStore = writable(state.data);
-    const stateStore = writable(stateAccessor);
 
-    function updateState<T extends keyof (typeof state)['state']>(
-        key: T,
-        value: (typeof state)['state'][T],
-    ) {
-        if (state.state[key] === value) return;
-        state.state[key] = value;
-        stateStore.set(stateAccessor);
-        router.remember(state, key);
-    }
+    const dataStore = writable<T>({} as T);
+    const defaultsStore = writable<T>({} as T);
+    const errorsStore = writable<Record<string, string[]>>({});
+    const formStateStore = writable<State>({
+        dirty: false,
+        processing: false,
+    });
 
-    function setData(data: T) {
-        baseDataStore.set((state.data = data));
-        const dirty = !isEqual(data, defaults);
-        if (dirty !== state.state.dirty) {
-            updateState('dirty', dirty);
+    function syncDirty($data: T, $defaults: T) {
+        const state = get(formStateStore);
+        const dirty = !isEqual($data, $defaults);
+        if (state.dirty !== dirty) {
+            state.dirty = dirty;
+            formStateStore.set(state);
         }
-        router.remember(state, key);
     }
 
-    function updateData(updater: (data: T) => T) {
-        setData(updater(state.data));
+    onMount(() =>
+        dataStore.subscribe($data => {
+            syncDirty($data, get(defaultsStore));
+            rememberStore.update(touch(state => (state.data = $data)));
+        }),
+    );
+
+    onMount(() =>
+        defaultsStore.subscribe($defaults => {
+            syncDirty(get(dataStore), $defaults);
+            rememberStore.update(touch(state => (state.defaults = $defaults)));
+        }),
+    );
+
+    onMount(() =>
+        errorsStore.subscribe($errors =>
+            rememberStore.update(touch(state => (state.errors = $errors))),
+        ),
+    );
+
+    onMount(() =>
+        formStateStore.subscribe($state =>
+            rememberStore.update(touch(state => (state.success = $state.success))),
+        ),
+    );
+
+    function restore() {
+        const restored = get(rememberStore);
+        defaultsStore.set(restored.defaults);
+        dataStore.set(restored.data);
+        errorsStore.set(restored.errors);
     }
+
+    let transform: ((data: T) => any) | undefined = undefined;
+    let cancelToken: { cancel(): void } | undefined = undefined;
+
+    restore();
 
     const form: FormController<T> = {
-        subscribe: stateStore.subscribe,
+        subscribe: formStateStore.subscribe,
+        restore() {
+            restore();
+            return this;
+        },
         reset(...fields) {
+            const defaults = get(defaultsStore);
             if (!fields.length) {
-                setData(cloneDeep(defaults));
+                dataStore.set(cloneDeep(defaults));
                 return this;
             }
+            const data = get(dataStore);
             for (const field of fields) {
                 if (field in defaults) {
-                    (state.data as any)[field] = cloneDeep(defaults[field]);
+                    (data as any)[field] = cloneDeep(defaults[field]);
                 } else {
-                    (state.data as any)[field] = undefined;
+                    (data as any)[field] = undefined;
                 }
             }
-            setData(state.data);
+            dataStore.set(data);
             return this;
         },
         defaults: function (this: FormController<T>, data?: T) {
-            if (!data) return defaults;
-            defaults = cloneDeep(data);
-            updateState('dirty', !isEqual(state.data, defaults));
+            if (!data) return get(defaultsStore);
+            defaultsStore.set(cloneDeep(data));
             return this;
         } as any,
         error(key: string, errors: string | string[], append = false) {
-            const err = state.errors[key] || [];
+            const $errors = get(errorsStore);
+            const err = $errors[key] || [];
             if (typeof errors === 'string') {
                 errors = [errors];
             }
             if (append) {
                 errors = err.concat(errors);
             }
-            state.errors[key] = errors;
-            errorsStore.set(state.errors);
-            router.remember(state, key);
+            $errors[key] = errors;
+            errorsStore.set($errors);
             return this;
         },
         clearErrors(...keys) {
             if (!keys.length) {
-                state.errors = {};
-                errorsStore.set(state.errors);
-                router.remember(state, key);
+                errorsStore.set({});
                 return this;
             }
-            for (const key of keys) {
-                delete state.errors[key];
-            }
-            errorsStore.set(state.errors);
-            router.remember(state, key);
+            errorsStore.update(
+                touch($errors => {
+                    for (const key of keys) {
+                        delete $errors[key];
+                    }
+                }),
+            );
             return this;
         },
         transform(transformer) {
@@ -193,43 +224,56 @@ export function useForm<T extends Record<string, any> = {}>(
                     options.onCancelToken?.(token);
                 },
                 onBefore: visit => {
-                    updateState('success', undefined);
+                    formStateStore.update(touch(state => (state.success = undefined)));
                     return options.onBefore?.(visit);
                 },
                 onStart: visit => {
-                    processing.value = true;
+                    formStateStore.update(touch(state => (state.processing = true)));
                     options.onStart?.(visit);
                 },
                 onProgress: event => {
-                    progress.value = event;
+                    formStateStore.update(touch(state => (state.progress = event)));
                     options.onProgress?.(event);
                 },
                 onSuccess: page => {
-                    errorsStore.set((state.errors = {}));
-                    router.remember(state, key);
-                    updateState('success', true);
+                    errorsStore.set({});
+                    formStateStore.set({
+                        dirty: false,
+                        processing: false,
+                        success: true,
+                    });
                     options.onSuccess?.(page);
                 },
                 onError: errors => {
                     errorsStore.set(
-                        (state.errors = Object.fromEntries(
-                            Object.entries(errors).map(([k, v]) => [
-                                k,
-                                typeof v === 'string' ? [v] : v,
-                            ]),
-                        )),
+                        Object.fromEntries(
+                            Object.entries(errors as any as Record<string, string[] | string>).map(
+                                ([k, v]) => [k, typeof v === 'string' ? [v] : v],
+                            ),
+                        ),
                     );
-                    router.remember(state, key);
-                    updateState('success', false);
+                    formStateStore.set({
+                        dirty: true,
+                        processing: false,
+                        success: false,
+                    });
                     options.onError?.(errors);
                 },
-                onFinish: visit => {
-                    processing.value = false;
-                    options.onFinish?.(visit);
-                },
-                data: transform(cloneDeep(state.data)),
+                data: transform ? transform(cloneDeep(get(dataStore))) : get(dataStore),
             };
             router.visit(url, opt);
+        },
+        post(url, options) {
+            this.submit('post', url, options);
+        },
+        put(url, options) {
+            this.submit('put', url, options);
+        },
+        patch(url, options) {
+            this.submit('patch', url, options);
+        },
+        delete(url, options) {
+            this.submit('delete', url, options);
         },
         cancel() {
             if (cancelToken) {
@@ -242,11 +286,7 @@ export function useForm<T extends Record<string, any> = {}>(
 
     return {
         form,
-        data: {
-            subscribe: baseDataStore.subscribe,
-            set: setData,
-            update: updateData,
-        },
+        data: dataStore,
         errors: {
             subscribe: errorsStore.subscribe,
         },

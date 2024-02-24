@@ -55,7 +55,8 @@ export function link(
             onCancel: () => fireEvent(target, 'cancel'),
             onSuccess: page => fireEvent(target, 'success', { detail: { page } }),
             onError: errors => fireEvent(target, 'error', { detail: { errors } }),
-            ...data,
+            ...options,
+            data,
         });
     }
 
